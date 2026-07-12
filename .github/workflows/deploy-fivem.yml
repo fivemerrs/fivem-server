@@ -22,6 +22,7 @@ jobs:
         env:
           PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
           PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
           LOCAL_PORT: "30120"
         run: |
           chmod +x scripts/tunnel-setup.sh scripts/playit-setup.sh
@@ -66,13 +67,22 @@ jobs:
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: playit (runner-only)"
+          echo "#  backend: playit"
           echo "############################################"
 
       - name: Keep tunnel + server alive
+        env:
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
           tail -f fivem.log &
-          while docker ps --format '{{.Names}}' 2>/dev/null | grep -q playit; do
-            sleep 60
+          # Restart playit if it dies
+          while true; do
+            if ! docker ps --format '{{.Names}}' | grep -qx playit; then
+              echo "[keepalive] restarting playit agent..."
+              docker rm -f playit 2>/dev/null || true
+              docker run -d --name playit --net=host \
+                -e "SECRET_KEY=${PLAYIT_SECRET}" \
+                ghcr.io/playit-cloud/playit-agent:0.17 || true
+            fi
+            sleep 30
           done
-          wait
