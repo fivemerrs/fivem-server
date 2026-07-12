@@ -1,56 +1,51 @@
 #!/usr/bin/env bash
-# Pinggy TCP+UDP via Python SDK + CLI fallback
+# Reliable Pinggy: download CLI, start TCP+UDP tunnels, parse public URL
 set -euo pipefail
 
-: "${PINGGY_TOKEN:?Set PINGGY_TOKEN}"
+: "${PINGGY_TOKEN:?}"
 LOCAL_PORT="${LOCAL_PORT:-30120}"
-log() { echo "[pinggy] $*" >&2; }
+log() { echo "[pinggy] $*"; }
 
-log "pip install pinggy..."
-python3 -m pip install -q --upgrade pinggy 2>&1 | tail -n 5
+log "Downloading Pinggy CLI..."
+curl -fsSL -o pinggy "https://github.com/Pinggy-io/cli-js/releases/latest/download/pinggy-linux-x64" \
+  || curl -fsSL -o pinggy "https://s3.ap-south-1.amazonaws.com/public.pinggy.io/cli/linux-x64/pinggy"
+chmod +x ./pinggy
+./pinggy --version || true
 
-rm -f pinggy-urls.txt
-log "starting tunnel..."
-python3 -u scripts/pinggy_run.py > pinggy-run.log 2>&1 &
-TUNNEL_PID=$!
-echo "$TUNNEL_PID" > pinggy.pid
-log "pid=$TUNNEL_PID"
+rm -f pinggy-out.log pinggy-urls.txt
+log "Starting TCP tunnel (foreground capture)..."
+# Run TCP in background detached; capture output
+set +e
+./pinggy --token "$PINGGY_TOKEN" --type tcp -l "127.0.0.1:${LOCAL_PORT}" --force --b --vv > pinggy-tcp.log 2>&1
+TCP_RC=$?
+set -e
+log "tcp exit=$TCP_RC"
+cat pinggy-tcp.log || true
 
-CONNECT=""
-for i in $(seq 1 60); do
-  if [ -f pinggy-urls.txt ] && grep -q '^connect=' pinggy-urls.txt; then
-    CONNECT=$(grep '^connect=' pinggy-urls.txt | head -1 | cut -d= -f2-)
-    break
-  fi
-  if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
-    log "process died — log:"
-    cat pinggy-run.log || true
-    # CLI TCP fallback
-    log "trying Pinggy CLI TCP..."
-    curl -fsSL -o pinggy.bin "https://github.com/Pinggy-io/pinggy-release/releases/download/v0.5.1/pinggy_linux_amd64" \
-      || curl -fsSL -o pinggy.bin "https://s3.ap-south-1.amazonaws.com/public.pinggy.io/pinggy/linux/amd64/pinggy"
-    chmod +x pinggy.bin
-    ./pinggy.bin --token "$PINGGY_TOKEN" --type tcp -l "$LOCAL_PORT" --force --b --noTui > pinggy-cli.log 2>&1 || true
-    sleep 5
-    cat pinggy-cli.log || true
-    CONNECT=$(grep -oE '[a-zA-Z0-9.-]+\.pinggy\.io:[0-9]+|[a-zA-Z0-9.-]+\.a\.pinggy\.io:[0-9]+|tcp://[^ ]+' pinggy-cli.log pinggy-run.log 2>/dev/null | head -1 | sed 's|tcp://||')
-    [ -n "$CONNECT" ] || exit 1
-    break
-  fi
-  # show progress every 10s
-  if [ $((i % 5)) -eq 0 ]; then
-    log "waiting for URL... ($i/60)"
-    tail -n 3 pinggy-run.log 2>/dev/null || true
-  fi
-  sleep 2
-done
+log "Starting UDP tunnel..."
+set +e
+./pinggy --token "$PINGGY_TOKEN" --type udp -l "127.0.0.1:${LOCAL_PORT}" --force --b --vv > pinggy-udp.log 2>&1
+UDP_RC=$?
+set -e
+log "udp exit=$UDP_RC"
+cat pinggy-udp.log || true
 
-[ -n "$CONNECT" ] || {
-  log "no URL — dump:"
-  cat pinggy-run.log || true
-  exit 1
-}
+./pinggy ps > pinggy-ps.log 2>&1 || true
+cat pinggy-ps.log || true
 
+# Parse any host:port from logs
+CONNECT=$(grep -oE '[a-zA-Z0-9.-]+\.(a\.)?pinggy(\.io|\.online):[0-9]+' pinggy-tcp.log pinggy-udp.log pinggy-ps.log 2>/dev/null | head -1 || true)
+if [ -z "$CONNECT" ]; then
+  CONNECT=$(grep -oE 'tcp://[^[:space:]]+|udp://[^[:space:]]+' pinggy-tcp.log pinggy-udp.log 2>/dev/null | head -1 | sed -E 's#^[a-z]+://##')
+fi
+
+# Prefer TCP address for FiveM connect (same host if possible)
+TCP_ADDR=$(grep -oE '[a-zA-Z0-9.-]+\.(a\.)?pinggy(\.io|\.online):[0-9]+' pinggy-tcp.log pinggy-ps.log 2>/dev/null | head -1 || true)
+[ -n "$TCP_ADDR" ] && CONNECT="$TCP_ADDR"
+
+[ -n "$CONNECT" ] || { log "ERROR: could not parse public address"; exit 1; }
+
+echo "connect=$CONNECT" > pinggy-urls.txt
 CONNECT_HOST="${CONNECT%%:*}"
 CONNECT_PORT="${CONNECT##*:}"
 
