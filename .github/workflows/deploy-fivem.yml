@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download
+      - name: Download FXServer
         run: |
           curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
           curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
@@ -42,25 +42,33 @@ jobs:
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
-          sleep 10
-          echo "=== FXServer status ==="
-          ps aux | grep -i fivem | grep -v grep || echo "FXServer not running"
-          cat ../fivem.log | tail -5
+          echo "Waiting for FXServer..."
+          for i in $(seq 1 15); do
+            sleep 1
+            if curl -s http://localhost:30120/info.json > /dev/null 2>&1; then
+              echo "FXServer is ready!"
+              break
+            fi
+          done
+          echo "=== FXServer log ==="
+          tail -10 ../fivem.log 2>/dev/null || echo "No log yet"
 
       - name: Playit tunnel
         run: |
-          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
-          sleep 5
-
           SECRET="${{ secrets.PLAYIT_SECRET }}"
-          echo "secret = \"$SECRET\"" | sudo tee /etc/playit/playit.toml
-
-          sudo systemctl restart playit.service
-          echo "Waiting for playit tunnel to establish..."
+          echo "Starting playit tunnel with Docker..."
+          docker run -d --name playit --rm --net=host \
+            -e SECRET_KEY="$SECRET" \
+            ghcr.io/playit-cloud/playit-agent:0.17 2>&1
+            
+          sleep 5
+          echo "=== Container status ==="
+          docker ps -a --filter name=playit
           
-          # Wait up to 60 seconds for tunnel to appear in logs
+          echo "=== Waiting for tunnel to establish ==="
           for i in $(seq 1 30); do
-            sleep 2
-            sudo journalctl -u playit.service --no-pager -n 20 2>/dev/null | tail -20
+            sleep 5
             echo "--- check $i ---"
+            docker logs playit --tail 10 2>/dev/null || echo "Container not running"
+            echo ""
           done
