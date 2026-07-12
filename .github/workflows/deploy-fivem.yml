@@ -5,7 +5,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -43,35 +43,24 @@ jobs:
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
+          echo "=== FXServer status ==="
+          ps aux | grep -i fivem | grep -v grep || echo "FXServer not running"
+          cat ../fivem.log | tail -5
 
       - name: Playit tunnel
-        id: tunnel
         run: |
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
-          sleep 10
+          sleep 5
 
-          if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
-            echo "secret = \"${{ secrets.PLAYIT_SECRET }}\"" | sudo tee /etc/playit/playit.toml
-            sudo systemctl restart playit.service
-            sleep 15
-            echo "=== Tunnel log ==="
-            sudo cat /var/log/playit/playit.log 2>/dev/null | tail -20
-          else
-            echo ""
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            echo "!!  CLAIM URL WILL APPEAR BELOW IN A FEW SECONDS"
-            echo "!!  OPEN IT IN YOUR BROWSER TO CLAIM THE AGENT"
-            echo "!!  AFTER CLAIMING, THE TUNNEL SECRET WILL BE SAVED"
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            echo ""
+          SECRET="${{ secrets.PLAYIT_SECRET }}"
+          echo "secret = \"$SECRET\"" | sudo tee /etc/playit/playit.toml
 
-            # Run playit setup with longer timeout - 120 seconds for user to claim
-            sudo timeout 120 playit setup 2>&1 || true
-
-            echo ""
-            echo "=== Checking config for secret ==="
-            sudo cat /etc/playit/playit.toml 2>/dev/null
-            echo ""
-            echo "=== Daemon log ==="
-            sudo cat /var/log/playit/playit.log 2>/dev/null | tail -20
-          fi
+          sudo systemctl restart playit.service
+          echo "Waiting for playit tunnel to establish..."
+          
+          # Wait up to 60 seconds for tunnel to appear in logs
+          for i in $(seq 1 30); do
+            sleep 2
+            sudo journalctl -u playit.service --no-pager -n 20 2>/dev/null | tail -20
+            echo "--- check $i ---"
+          done
