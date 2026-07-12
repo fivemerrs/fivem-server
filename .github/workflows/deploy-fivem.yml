@@ -18,24 +18,19 @@ jobs:
 
       - name: Download FXServer
         run: |
-          echo "Fetching latest FXServer build..."
-          BUILD_PAGE=$(curl -s "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/")
-          BUILD_ID=$(echo "$BUILD_PAGE" | grep -oP '/(\d+-[a-f0-9]+)/fx\.tar\.xz' | head -1 | grep -oP '\d+-[a-f0-9]+')
-          if [ -z "$BUILD_ID" ]; then
-            echo "Failed to find build ID, trying fallback..."
-            BUILD_ID="25770-a2e23b"
-          fi
-          echo "Using build: $BUILD_ID"
-          curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/${BUILD_ID}/fx.tar.xz"
+          FX_URL="https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
+          echo "Downloading FXServer from: $FX_URL"
+          curl -L -o fx.tar.xz "$FX_URL"
           mkdir -p fxserver
           tar -xf fx.tar.xz -C fxserver
           rm fx.tar.xz
-          echo "FXServer extracted successfully"
+          ls fxserver/
 
       - name: Set up resources
         run: |
           mkdir -p server-data/resources
           unzip -qo resources.zip -d server-data/resources/
+          ls -la server-data/resources/
 
       - name: Write server.cfg
         run: |
