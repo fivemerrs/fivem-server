@@ -88,4 +88,7 @@ jobs:
           if docker ps --filter name=playit -q | grep -q .; then
             docker logs -f playit &
           fi
+          if command -v pwrp >/dev/null 2>&1; then
+            pwrp ps 2>/dev/null || true
+          fi
           sleep infinity
