@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Keep Pinggy tunnel + FXServer alive for the job
 set -euo pipefail
-
 tail -f fivem.log &
-TUNNEL_PID=$(cat pinggy.pid 2>/dev/null || echo "")
-
-if [ -n "$TUNNEL_PID" ] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
-  echo "[pinggy] tunnel pid $TUNNEL_PID — waiting"
-  wait "$TUNNEL_PID"
-else
-  echo "[pinggy] restarting tunnel in foreground..."
-  exec python3 scripts/pinggy_run.py
-fi
+# Keep job alive; restart tunnels if daemon dies
+while true; do
+  if ! ./pinggy ps 2>/dev/null | grep -qiE 'tcp|udp|running|active'; then
+    echo "[keepalive] restarting pinggy tunnels..."
+    ./pinggy --token "${PINGGY_TOKEN}" --type tcp -l "127.0.0.1:${LOCAL_PORT:-30120}" --force --b || true
+    ./pinggy --token "${PINGGY_TOKEN}" --type udp -l "127.0.0.1:${LOCAL_PORT:-30120}" --force --b || true
+  fi
+  sleep 45
+done
