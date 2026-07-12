@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 tail -f fivem.log &
-# Pinggy daemon owns tunnels; keep job alive and restart if gone
+PID=$(cat pinggy.pid)
+# Keep SDK process in foreground wait; if it dies, restart
 while true; do
-  if ! ./pinggy ps 2>/dev/null | grep -qiE 'tcp|udp|running|listening|active|forward'; then
-    echo "[keepalive] tunnels missing — restarting"
-    ./pinggy --token "${PINGGY_TOKEN}" --type tcp -l "127.0.0.1:${LOCAL_PORT:-30120}" --force --b || true
-    ./pinggy --token "${PINGGY_TOKEN}" --type udp -l "127.0.0.1:${LOCAL_PORT:-30120}" --force --b || true
+  if kill -0 "$PID" 2>/dev/null; then
+    wait "$PID" || true
   fi
-  sleep 30
+  echo "[keepalive] restarting pinggy SDK..."
+  python3 -u scripts/pinggy_run.py > pinggy-run.log 2>&1 &
+  PID=$!
+  echo $PID > pinggy.pid
+  sleep 5
 done
