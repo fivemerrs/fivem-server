@@ -54,7 +54,7 @@ jobs:
 
       - name: Install playit.gg
         run: |
-          curl -fsSL https://packages.playit.gg/install.sh | bash
+          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
 
       - name: Start server + tunnel
         run: |
