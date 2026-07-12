@@ -44,33 +44,35 @@ jobs:
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
 
-      - name: Setup playit tunnel
+      - name: Playit tunnel
         id: tunnel
         run: |
-          # Install (daemon auto-starts)
+          # Install playit (daemon auto-starts as root)
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
-          sleep 5
+          sleep 10
 
-          # Add runner to playit group so CLI can talk to daemon
-          sudo usermod -aG playit $USER
-
-          echo "========== PLAYIT SETUP =========="
+          echo "========== PLAYIT STATUS =========="
+          systemctl status playit.service --no-pager -n 3 2>/dev/null || true
+          echo ""
 
           if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
-            echo "Using saved playit secret..."
-            echo "${{ secrets.PLAYIT_SECRET }}" | sg playit -c "playit setup" 2>&1 || true
-            sleep 10
-            sg playit -c "playit show-tunnel" 2>&1 || echo "tunnel not ready yet"
+            # Already have a secret - write config and restart
+            echo "secret = \"${{ secrets.PLAYIT_SECRET }}\"" | sudo tee /etc/playit/playit.toml
+            sudo systemctl restart playit.service
+            sleep 15
+            echo "=== Tunnel info ==="
+            sudo cat /var/log/playit/playit.log 2>/dev/null | tail -20
           else
-            echo "Running playit setup to get claim URL..."
-            # Non-interactive setup - the claim URL should appear here
-            sg playit -c "playit setup" 2>&1
-            sleep 5
-            echo "========== DAEMON LOG =========="
-            cat /var/log/playit/playit.log 2>/dev/null || echo "no log file"
+            # No secret - run setup to get claim URL
+            # sudo + timeout handles permissions and non-interactive
+            echo "=== Running playit setup (with sudo + 15s timeout) ==="
+            sudo timeout 15 playit setup 2>&1 || true
             echo ""
-            echo "========== LOOKING FOR CLAIM =========="
-            sg playit -c "playit setup" 2>&1 | head -20
+            echo "=== Checking for claim URL in daemon log ==="
+            sudo cat /var/log/playit/playit.log 2>/dev/null
+            echo ""
+            echo "=== Checking config ==="
+            sudo cat /etc/playit/playit.toml 2>/dev/null || echo "no config yet"
           fi
 
           echo "========== DONE =========="
