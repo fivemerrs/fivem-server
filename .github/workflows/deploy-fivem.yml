@@ -17,18 +17,17 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Install Portwarp CLI
-        run: curl -fsSL https://portwarp.com/download/install.sh | bash
-
-      - name: Tunnel setup
+      - name: Tunnel setup (frp)
         id: tunnel
         env:
-          PORTWARP_API_KEY: ${{ secrets.PORTWARP_API_KEY }}
-          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
+          FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+          FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+          FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
+          FRP_PUBLIC_PORT: ${{ secrets.FRP_PUBLIC_PORT }}
           LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/tunnel-setup.sh
-          scripts/tunnel-setup.sh | tee tunnel.log
+          chmod +x scripts/frp-setup.sh
+          scripts/frp-setup.sh | tee tunnel.log
 
       - name: Write server config
         env:
@@ -60,27 +59,29 @@ jobs:
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
-          for i in $(seq 1 60); do
-            sleep 2
+          for i in $(seq 1 120); do
+            sleep 3
             if curl -sf http://localhost:30120/info.json >/dev/null 2>&1; then
-              echo "FXServer ready"
+              echo "FXServer ready (${i} checks)"
               curl -s http://localhost:30120/info.json | head -c 400
-              break
+              exit 0
             fi
           done
+          echo "FXServer not ready after 6 minutes — last log lines:"
+          tail -n 40 ../fivem.log || true
+          exit 1
 
       - name: Print connect info
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
+          echo "#  backend: frp (free self-hosted relay)"
           echo "############################################"
 
       - name: Keep tunnel + server alive
         env:
-          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
-          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+          LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/portwarp-keepalive.sh
+          chmod +x scripts/frp-keepalive.sh
           tail -f fivem.log &
-          scripts/portwarp-keepalive.sh "$TUNNEL_ID"
+          scripts/frp-keepalive.sh
