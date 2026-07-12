@@ -17,14 +17,9 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Install Portwarp CLI
-        run: curl -fsSL https://portwarp.com/download/install.sh | bash
-
-      - name: Tunnel setup
+      - name: Tunnel setup (playit)
         id: tunnel
         env:
-          PORTWARP_API_KEY: ${{ secrets.PORTWARP_API_KEY }}
-          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
           PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
           PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
@@ -72,21 +67,13 @@ jobs:
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
+          echo "#  backend: playit (runner-only)"
           echo "############################################"
 
       - name: Keep tunnel + server alive
-        env:
-          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
-          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
-          TUNNEL_BACKEND: ${{ steps.tunnel.outputs.tunnel_backend }}
         run: |
           tail -f fivem.log &
-          if [ "$TUNNEL_BACKEND" = "portwarp" ] && [ -n "$TUNNEL_ID" ]; then
-            chmod +x scripts/portwarp-keepalive.sh
-            scripts/portwarp-keepalive.sh "$TUNNEL_ID"
-          else
-            echo "playit agent active — holding job open"
-            while docker ps --format '{{.Names}}' | grep -q playit; do sleep 30; done
-            tail -f /dev/null
-          fi
+          while docker ps --format '{{.Names}}' 2>/dev/null | grep -q playit; do
+            sleep 60
+          done
+          wait
