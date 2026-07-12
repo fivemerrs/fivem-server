@@ -17,16 +17,14 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Tunnel setup (playit)
+      - name: Pinggy tunnel setup
         id: tunnel
         env:
-          PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
-          PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
           LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/tunnel-setup.sh scripts/playit-setup.sh
-          scripts/tunnel-setup.sh | tee tunnel.log
+          chmod +x scripts/pinggy-setup.sh scripts/pinggy-keepalive.sh
+          scripts/pinggy-setup.sh | tee tunnel.log
 
       - name: Write server config
         env:
@@ -67,22 +65,13 @@ jobs:
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: playit"
+          echo "#  backend: pinggy TCP+UDP"
           echo "############################################"
 
       - name: Keep tunnel + server alive
         env:
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
+          LOCAL_PORT: "30120"
         run: |
-          tail -f fivem.log &
-          # Restart playit if it dies
-          while true; do
-            if ! docker ps --format '{{.Names}}' | grep -qx playit; then
-              echo "[keepalive] restarting playit agent..."
-              docker rm -f playit 2>/dev/null || true
-              docker run -d --name playit --net=host \
-                -e "SECRET_KEY=${PLAYIT_SECRET}" \
-                ghcr.io/playit-cloud/playit-agent:0.17 || true
-            fi
-            sleep 30
-          done
+          chmod +x scripts/pinggy-keepalive.sh
+          scripts/pinggy-keepalive.sh
