@@ -24,7 +24,9 @@ jobs:
           LOCAL_PORT: "30120"
         run: |
           chmod +x scripts/pinggy-setup.sh scripts/pinggy-keepalive.sh
-          scripts/pinggy-setup.sh | tee tunnel.log
+          scripts/pinggy-setup.sh
+          test -s connect.txt
+          echo "tunnel output connect=$(cat connect.txt)"
 
       - name: Write server config
         env:
