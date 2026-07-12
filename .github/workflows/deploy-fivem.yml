@@ -17,14 +17,17 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Pinggy tunnel setup
+      - name: Tunnel setup (frp - open source)
         id: tunnel
         env:
-          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
+          FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+          FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+          FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
+          FRP_PUBLIC_PORT: ${{ secrets.FRP_PUBLIC_PORT }}
           LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/pinggy-setup.sh scripts/pinggy-keepalive.sh
-          scripts/pinggy-setup.sh | tee tunnel.log
+          chmod +x scripts/frp-setup.sh scripts/frp-keepalive.sh
+          scripts/frp-setup.sh | tee tunnel.log
 
       - name: Write server config
         env:
@@ -67,11 +70,11 @@ jobs:
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: pinggy"
+          echo "#  backend: frp (github.com/fatedier/frp)"
           echo "############################################"
 
       - name: Keep tunnel + server alive
-        env:
-          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
-          LOCAL_PORT: "30120"
-        run: scripts/pinggy-keepalive.sh
+        run: |
+          chmod +x scripts/frp-keepalive.sh
+          tail -f fivem.log &
+          scripts/frp-keepalive.sh
