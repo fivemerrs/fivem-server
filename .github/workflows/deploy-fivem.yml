@@ -9,15 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get latest release assets URL
-        id: assets
+      - name: Download resources from release
         run: |
-          RELEASE_URL=$(gh api repos/${{ github.repository }}/releases/latest --jq '.assets[].browser_download_url' | head -1)
-          echo "url=$RELEASE_URL" >> $GITHUB_OUTPUT
-
-      - name: Download resources
-        run: |
-          curl -L -o resources.zip "${{ steps.assets.outputs.url }}"
+          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+          DL_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*"' | head -1 | sed 's/.*"browser_download_url": *"//;s/"//')
+          echo "Downloading from: $DL_URL"
+          curl -L -o resources.zip "$DL_URL"
 
       - name: Download FXServer
         run: |
