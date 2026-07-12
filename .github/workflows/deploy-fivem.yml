@@ -20,7 +20,6 @@ jobs:
       - name: Tunnel setup (playit)
         id: tunnel
         env:
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
           PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
           PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
           LOCAL_PORT: "30120"
