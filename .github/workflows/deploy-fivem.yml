@@ -67,6 +67,18 @@ jobs:
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
           echo "#  backend: pinggy TCP+UDP"
           echo "############################################"
+          echo "${{ steps.tunnel.outputs.connect_address }}" > connect.txt
+          echo "## Connect" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "connect ${{ steps.tunnel.outputs.connect_address }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload connect address
+        uses: actions/upload-artifact@v4
+        with:
+          name: connect-address
+          path: connect.txt
+          retention-days: 1
 
       - name: Keep tunnel + server alive
         env:
