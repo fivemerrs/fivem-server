@@ -4,9 +4,8 @@ set -euo pipefail
 LOCAL_PORT="${LOCAL_PORT:-30120}"
 log() { echo "[pinggy] $*"; }
 
-# Kill leftover CLI tunnels from older runs on this runner (fresh runner usually none)
+# Stop leftover Pinggy daemon only (do NOT pkill -f pinggy — kills this script)
 command -v pinggy >/dev/null 2>&1 && pinggy daemon stop 2>/dev/null || true
-pkill -f pinggy || true
 sleep 1
 
 log "pip install pinggy SDK"
