@@ -54,63 +54,68 @@ jobs:
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
-          echo "FXServer PID: $(pgrep -f FXServer)"
+          echo "::notice::FXServer started (PID: $(pgrep -f FXServer))"
 
-      - name: Start playit and get claim URL
+      - name: Run server + tunnel (all output here)
         run: |
-          # If we already have a saved secret, use it
+          echo "::group::Starting playit tunnel"
+
+          # If we have a saved secret, use it
           if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
             echo "Using saved playit secret"
             playit --secret "${{ secrets.PLAYIT_SECRET }}" > playit.log 2>&1 &
-            sleep 15
-            echo "=== TUNNEL INFO ==="
-            grep -i "address\|tunnel\|listen" playit.log || true
-            echo "=== (tunnel address above) ==="
+            sleep 20
+            echo "::notice::TUNNEL ADDRESS:"
+            grep -i "address\|tunnel\|listen\|domain" playit.log || echo "no tunnel yet"
           else
-            echo "No saved secret â€” starting playit to get claim URL"
+            echo "No saved secret - starting fresh"
             playit > playit.log 2>&1 &
-            sleep 15
-            echo ""
-            echo "============================================"
-            echo "  CLAIM URL (open in browser):"
-            grep -oP 'https?://playit\.gg[^ ]+' playit.log | head -5 || echo "    (not found yet, checking again...)"
-            grep -oP 'https?://[^ ]*claim[^ ]*' playit.log | head -5 || true
-            grep -oP 'https?://[^ ]*' playit.log | grep -v localhost | head -5 || true
-            echo ""
-            echo "  FULL PLAYIT OUTPUT:"
-            cat playit.log
-            echo ""
-            echo "  After claiming, the tunnel address will appear here."
-            echo "  Check this log again in 1-2 minutes."
-            echo "============================================"
-            # Wait and check for secret
-            sleep 60
-            if [ -f ~/.config/playit/playit.toml ]; then
-              echo "=== PLAYIT CONFIG (SECRET FOUND) ==="
-              cat ~/.config/playit/playit.toml
+            sleep 20
+            CLAIM_URL=$(grep -oP 'https?://playit\.gg[^\s"'\'']*' playit.log | head -1)
+            if [ -z "$CLAIM_URL" ]; then
+              CLAIM_URL=$(grep -oP 'https?://[^\s"'\'']*claim[^\s"'\'']*' playit.log | head -1)
             fi
-            echo ""
-            echo "=== TUNNEL INFO (after 60s) ==="
-            grep -i "address\|tunnel\|listen\|domain" playit.log || echo "No tunnel yet â€” claim the URL above first"
+            if [ -n "$CLAIM_URL" ]; then
+              echo "::notice title=CLAIM YOUR AGENT::$CLAIM_URL"
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+              echo "!!  OPEN THIS URL IN YOUR BROWSER TO CLAIM:"
+              echo "!!  $CLAIM_URL"
+              echo "!!  After claiming, the tunnel address appears here."
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            else
+              echo "Full playit output:"
+              cat playit.log
+            fi
           fi
 
-      - name: Keep alive (check tunnel periodically)
-        run: |
+          echo "::endgroup::"
+
+          echo "::group::Keeping server alive - checking every 30s"
+          echo "Server is running. Check this log for tunnel address."
+          echo "The claim URL (if needed) is in the step above."
+          echo "Once claimed, the tunnel address will appear in this log."
+
+          # Keep alive - also re-check for tunnel info periodically
           for i in $(seq 1 720); do
-            echo "[${i}x10s] Checking..."
             if ! pgrep -f FXServer > /dev/null 2>&1; then
-              echo "FXServer died â€” restarting"
+              echo "FXServer died - restarting"
               cd fxserver
               nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
               cd ..
             fi
             if ! pgrep playit > /dev/null 2>&1; then
-              echo "playit died â€” restarting"
+              echo "playit died - restarting"
               if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
                 playit --secret "${{ secrets.PLAYIT_SECRET }}" >> playit.log 2>&1 &
               else
                 playit >> playit.log 2>&1 &
               fi
+              sleep 15
             fi
-            sleep 10
+            # Every 30s show tunnel info
+            echo "[$(date '+%H:%M:%S')] Check: server=up tunnel=up"
+            grep -i "address\|tunnel\|listen\|domain\|ASSIGNED_PORT" playit.log 2>/dev/null | tail -3
+            echo "---"
+            sleep 30
           done
+          echo "::endgroup::"
