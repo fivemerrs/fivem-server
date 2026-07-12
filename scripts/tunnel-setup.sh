@@ -56,9 +56,12 @@ setup_portwarp() {
 
   log "Tunnel ID: $TUNNEL_ID"
 
-  # Start relay in background
-  pwrp connect "$TUNNEL_ID" -b 2>/dev/null || pwrp connect --tunnel "$TUNNEL_ID" -b
-  sleep 8
+  # Start relay in background (must not block the workflow step)
+  nohup pwrp connect "$TUNNEL_ID" -b > /tmp/pwrp-connect.log 2>&1 &
+  disown || true
+  sleep 12
+  tail -20 /tmp/pwrp-connect.log || true
+  pwrp ps 2>/dev/null || true
 
   INFO=$(pw_api "${API}/tunnels/${TUNNEL_ID}")
   CONNECT_ADDR=$(echo "$INFO" | jq -r '.tunnel.connection_address // .data.connection_address // empty')
