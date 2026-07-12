@@ -9,14 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download resources from release
+      - name: Download resources
         run: |
-          curl -L -o resources.zip "https://github.com/${{ github.repository }}/releases/download/v2/resources.zip"
+          curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
 
       - name: Download FXServer
         run: |
-          FX_URL="https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          curl -L -o fx.tar.xz "$FX_URL"
+          curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
           mkdir -p fxserver
           tar -xf fx.tar.xz -C fxserver
           rm fx.tar.xz
@@ -46,52 +45,72 @@ jobs:
           ensure Godzilla
           CFG
 
-      - name: Install playit + cloudflared
+      - name: Install playit
         run: |
-          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y || true
-          curl -L -o /usr/local/bin/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" || true
-          chmod +x /usr/local/bin/cloudflared || true
+          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
 
-      - name: Start FiveM server
+      - name: Start FXServer
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
-          echo "FXServer PID: $(pgrep -f FXServer || echo 'not found')"
+          echo "FXServer PID: $(pgrep -f FXServer)"
 
-      - name: Start tunnel (cloudflared)
+      - name: Start playit and get claim URL
         run: |
-          cloudflared tunnel --url http://localhost:30120 > cloudflared.log 2>&1 &
-          CF_PID=$!
-          echo "cloudflared PID: $CF_PID"
-          sleep 15
-          echo "=== CLOUDFLARED OUTPUT ==="
-          cat cloudflared.log
-          echo "=== END ==="
-          TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log | head -1)
-          if [ -n "$TUNNEL_URL" ]; then
-            echo "TUNNEL_URL=$TUNNEL_URL" >> $GITHUB_ENV
+          # If we already have a saved secret, use it
+          if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
+            echo "Using saved playit secret"
+            playit --secret "${{ secrets.PLAYIT_SECRET }}" > playit.log 2>&1 &
+            sleep 15
+            echo "=== TUNNEL INFO ==="
+            grep -i "address\|tunnel\|listen" playit.log || true
+            echo "=== (tunnel address above) ==="
+          else
+            echo "No saved secret â€” starting playit to get claim URL"
+            playit > playit.log 2>&1 &
+            sleep 15
             echo ""
             echo "============================================"
-            echo "  YOUR SERVER ADDRESS: $TUNNEL_URL"
-            echo "  Connect in FiveM: connect $TUNNEL_URL"
+            echo "  CLAIM URL (open in browser):"
+            grep -oP 'https?://playit\.gg[^ ]+' playit.log | head -5 || echo "    (not found yet, checking again...)"
+            grep -oP 'https?://[^ ]*claim[^ ]*' playit.log | head -5 || true
+            grep -oP 'https?://[^ ]*' playit.log | grep -v localhost | head -5 || true
+            echo ""
+            echo "  FULL PLAYIT OUTPUT:"
+            cat playit.log
+            echo ""
+            echo "  After claiming, the tunnel address will appear here."
+            echo "  Check this log again in 1-2 minutes."
             echo "============================================"
-          else
-            echo "No tunnel URL found, check cloudflared.log"
+            # Wait and check for secret
+            sleep 60
+            if [ -f ~/.config/playit/playit.toml ]; then
+              echo "=== PLAYIT CONFIG (SECRET FOUND) ==="
+              cat ~/.config/playit/playit.toml
+            fi
+            echo ""
+            echo "=== TUNNEL INFO (after 60s) ==="
+            grep -i "address\|tunnel\|listen\|domain" playit.log || echo "No tunnel yet â€” claim the URL above first"
           fi
 
-      - name: Keep alive
+      - name: Keep alive (check tunnel periodically)
         run: |
           for i in $(seq 1 720); do
+            echo "[${i}x10s] Checking..."
             if ! pgrep -f FXServer > /dev/null 2>&1; then
-              echo "FXServer died - restarting"
+              echo "FXServer died â€” restarting"
               cd fxserver
               nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
               cd ..
             fi
-            if ! pgrep -f cloudflared > /dev/null 2>&1; then
-              echo "cloudflared died - restarting"
-              cloudflared tunnel --url http://localhost:30120 >> cloudflared.log 2>&1 &
+            if ! pgrep playit > /dev/null 2>&1; then
+              echo "playit died â€” restarting"
+              if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
+                playit --secret "${{ secrets.PLAYIT_SECRET }}" >> playit.log 2>&1 &
+              else
+                playit >> playit.log 2>&1 &
+              fi
             fi
             sleep 10
           done
