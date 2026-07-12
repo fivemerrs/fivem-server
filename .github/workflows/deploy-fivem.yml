@@ -1,0 +1,85 @@
+name: Deploy FiveM Server
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest release assets URL
+        id: assets
+        run: |
+          RELEASE_URL=$(gh api repos/${{ github.repository }}/releases/latest --jq '.assets[].browser_download_url' | head -1)
+          echo "url=$RELEASE_URL" >> $GITHUB_OUTPUT
+
+      - name: Download resources
+        run: |
+          curl -L -o resources.zip "${{ steps.assets.outputs.url }}"
+
+      - name: Download FXServer
+        run: |
+          curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/5991-a2e23b/fx.tar.xz"
+          mkdir -p fxserver
+          tar -xf fx.tar.xz -C fxserver
+          rm fx.tar.xz
+
+      - name: Set up resources
+        run: |
+          mkdir -p server-data/resources
+          unzip -qo resources.zip -d server-data/resources/
+
+      - name: Write server.cfg
+        run: |
+          cat > server-data/server.cfg << 'CFG'
+          endpoint_add_tcp "0.0.0.0:30120"
+          endpoint_add_udp "0.0.0.0:30120"
+          sv_maxclients 32
+          sv_hostname "~g~FiveM Server"
+          sv_licenseKey "${{ secrets.SV_LICENSE_KEY }}"
+          sv_master1 ""
+          ensure chat
+          ensure mapmanager
+          ensure spawnmanager
+          ensure sessionmanager
+          ensure basic-gamemode
+          ensure hardcap
+          ensure baseevents
+          ensure wave-anticheat
+          ensure Godzilla
+          CFG
+
+      - name: Install playit.gg
+        run: |
+          curl -fsSL https://packages.playit.gg/install.sh | bash
+
+      - name: Start server + tunnel
+        run: |
+          cd fxserver
+          nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
+          sleep 15
+          nohup playit > ../playit.log 2>&1 &
+          sleep 5
+          echo "=== Server started ==="
+          echo "Server PID: $(pgrep -f FXServer || echo 'not found')"
+          echo "playit PID: $(pgrep playit || echo 'not found')"
+
+      - name: Wait for tunnel
+        run: |
+          sleep 30
+          cat playit.log | grep -i "tunnel\|address\|listen" || true
+          echo "=== Tunnel info above ==="
+
+      - name: Keep alive
+        run: |
+          for i in $(seq 1 720); do
+            if ! pgrep -f FXServer > /dev/null 2>&1; then
+              echo "FXServer died at ${i}x10s - restarting"
+              cd fxserver
+              nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
+              cd ..
+            fi
+            sleep 10
+          done
