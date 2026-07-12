@@ -5,7 +5,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -13,20 +13,37 @@ jobs:
         run: |
           curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
           curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          mkdir -p fxserver
+          mkdir -p fxserver server-data/resources
           tar -xf fx.tar.xz -C fxserver
-          mkdir -p server-data/resources
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Config
+      - name: Tunnel setup
+        id: tunnel
+        env:
+          PORTWARP_API_KEY: ${{ secrets.PORTWARP_API_KEY }}
+          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+          PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
+          PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
+          LOCAL_PORT: "30120"
         run: |
-          cat > server-data/server.cfg << 'CFG'
+          chmod +x scripts/tunnel-setup.sh
+          scripts/tunnel-setup.sh | tee tunnel.log
+
+      - name: Write server config
+        env:
+          CONNECT_ADDR: ${{ steps.tunnel.outputs.connect_address }}
+          CONNECT_HOST: ${{ steps.tunnel.outputs.connect_host }}
+        run: |
+          cat > server-data/server.cfg << CFG
           endpoint_add_tcp "0.0.0.0:30120"
           endpoint_add_udp "0.0.0.0:30120"
           sv_maxclients 8
-          sv_hostname "~g~FiveM Server"
+          sv_hostname "~g~FiveM Test Server"
           sv_licenseKey "${{ secrets.SV_LICENSE_KEY }}"
           sv_master1 ""
+          sv_listingHostOverride "${CONNECT_HOST}"
+          sv_listingIPOverride "${CONNECT_ADDR}"
           ensure chat
           ensure mapmanager
           ensure spawnmanager
@@ -37,38 +54,38 @@ jobs:
           ensure wave-anticheat
           ensure Godzilla
           CFG
+          echo "=== server.cfg ==="
+          cat server-data/server.cfg
 
       - name: Start FXServer
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           echo "Waiting for FXServer..."
-          for i in $(seq 1 15); do
-            sleep 1
-            if curl -s http://localhost:30120/info.json > /dev/null 2>&1; then
+          for i in $(seq 1 60); do
+            sleep 2
+            if curl -sf http://localhost:30120/info.json >/dev/null 2>&1; then
               echo "FXServer is ready!"
+              curl -s http://localhost:30120/info.json | head -c 500
               break
             fi
+            echo "  waiting... ($i/60)"
           done
-          echo "=== FXServer log ==="
-          tail -10 ../fivem.log 2>/dev/null || echo "No log yet"
+          tail -20 ../fivem.log || true
 
-      - name: Playit tunnel
+      - name: Print connect info
         run: |
-          SECRET="${{ secrets.PLAYIT_SECRET }}"
-          echo "Starting playit tunnel with Docker..."
-          docker run -d --name playit --rm --net=host \
-            -e SECRET_KEY="$SECRET" \
-            ghcr.io/playit-cloud/playit-agent:0.17 2>&1
-            
-          sleep 5
-          echo "=== Container status ==="
-          docker ps -a --filter name=playit
-          
-          echo "=== Waiting for tunnel to establish ==="
-          for i in $(seq 1 30); do
-            sleep 5
-            echo "--- check $i ---"
-            docker logs playit --tail 10 2>/dev/null || echo "Container not running"
-            echo ""
-          done
+          echo ""
+          echo "############################################"
+          echo "#  CONNECT IN FIVEM (F8 console):"
+          echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
+          echo "#  Backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
+          echo "############################################"
+
+      - name: Keep server alive
+        run: |
+          tail -f fivem.log &
+          if docker ps --filter name=playit -q | grep -q .; then
+            docker logs -f playit &
+          fi
+          sleep infinity
