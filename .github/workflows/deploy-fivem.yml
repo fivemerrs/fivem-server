@@ -17,14 +17,14 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
+      - name: Install Portwarp CLI
+        run: curl -fsSL https://portwarp.com/download/install.sh | bash
+
       - name: Tunnel setup
         id: tunnel
         env:
           PORTWARP_API_KEY: ${{ secrets.PORTWARP_API_KEY }}
           PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
-          PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
-          PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
           LOCAL_PORT: "30120"
         run: |
           chmod +x scripts/tunnel-setup.sh
@@ -54,41 +54,33 @@ jobs:
           ensure wave-anticheat
           ensure Godzilla
           CFG
-          echo "=== server.cfg ==="
           cat server-data/server.cfg
 
       - name: Start FXServer
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
-          echo "Waiting for FXServer..."
           for i in $(seq 1 60); do
             sleep 2
             if curl -sf http://localhost:30120/info.json >/dev/null 2>&1; then
-              echo "FXServer is ready!"
-              curl -s http://localhost:30120/info.json | head -c 500
+              echo "FXServer ready"
+              curl -s http://localhost:30120/info.json | head -c 400
               break
             fi
-            echo "  waiting... ($i/60)"
           done
-          tail -20 ../fivem.log || true
 
       - name: Print connect info
         run: |
-          echo ""
           echo "############################################"
-          echo "#  CONNECT IN FIVEM (F8 console):"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  Backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
+          echo "#  backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
           echo "############################################"
 
-      - name: Keep server alive
+      - name: Keep tunnel + server alive
+        env:
+          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
         run: |
+          chmod +x scripts/portwarp-keepalive.sh
           tail -f fivem.log &
-          if docker ps --filter name=playit -q | grep -q .; then
-            docker logs -f playit &
-          fi
-          if command -v pwrp >/dev/null 2>&1; then
-            pwrp ps 2>/dev/null || true
-          fi
-          sleep infinity
+          scripts/portwarp-keepalive.sh "$TUNNEL_ID"
