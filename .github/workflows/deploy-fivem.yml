@@ -45,54 +45,63 @@ jobs:
           ensure Godzilla
           CFG
 
-      - name: Install playit
+      - name: Install and setup playit
+        id: playit
         run: |
+          # Install playit
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
 
-      - name: Start FXServer
-        run: |
+          # Stop the auto-started systemd service
+          sudo systemctl stop playit.service 2>/dev/null || true
+          sudo systemctl disable playit.service 2>/dev/null || true
+
+          # Start FXServer in background
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
+          cd ..
 
-      - name: Start playit
-        id: playit
-        run: |
           echo "========== FIVEM TUNNEL SETUP =========="
+
           if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
             echo "Using saved playit secret"
-            playit --secret "${{ secrets.PLAYIT_SECRET }}" > playit.log 2>&1 &
+            playit -s "${{ secrets.PLAYIT_SECRET }}" > playit.log 2>&1 &
             sleep 20
             echo "Tunnel address:"
-            grep -i "dns\|tunnel\|address\|assigned" playit.log 2>/dev/null || tail -10 playit.log
+            grep -i "dns\|tunnel\|address\|assigned\|domain" playit.log | head -5
           else
             echo "Starting playit fresh (no secret saved)"
             echo ""
             echo "CLAIM URL WILL APPEAR BELOW:"
             echo "----------------------------------------"
             playit > playit.log 2>&1 &
-            sleep 25
+            sleep 30
             cat playit.log
             echo "========================================"
-            CLAIM=$(grep -oP 'https?://[^\s"'"'"']*claim[^\s"'"'"']*' playit.log | head -1)
+            echo ""
+            echo "--- Looking for claim URL ---"
+            grep -i "claim\|playit.gg\|http" playit.log | head -10
+            CLAIM=$(grep -oP 'https?://[^\s"'"'"']*' playit.log | grep -i "claim" | head -1)
             if [ -z "$CLAIM" ]; then
               CLAIM=$(grep -oP 'https?://playit\.gg[^\s"'"'"']*' playit.log | head -1)
-            fi
-            if [ -z "$CLAIM" ]; then
-              CLAIM=$(grep -oP 'https?://[^\s"'"'"']*' playit.log | grep -i "claim\|agent\|tunnel" | head -1)
             fi
             if [ -n "$CLAIM" ]; then
               echo ""
               echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-              echo "!!  CLAIM YOUR AGENT:"
-              echo "!!  $CLAIM"
-              echo "!!"
-              echo "!!  OPEN THIS URL IN YOUR BROWSER"
-              echo "!!  After claiming, the tunnel will work"
+              echo "!!  CLAIM URL: $CLAIM"
+              echo "!!  Open it in your browser to link the tunnel"
               echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
               echo "claim_url=$CLAIM" >> $GITHUB_OUTPUT
             fi
-            echo ""
-            echo "Full playit log above"
           fi
+
           echo "========== SETUP COMPLETE =========="
+
+      - name: Show logs
+        if: always()
+        run: |
+          echo "=== Full playit.log ==="
+          cat playit.log 2>/dev/null || echo "no playit.log"
+          echo ""
+          echo "=== Fivem.log (last 20) ==="
+          tail -20 fivem.log 2>/dev/null || echo "no fivem.log"
