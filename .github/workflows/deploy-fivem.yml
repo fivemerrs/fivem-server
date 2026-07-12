@@ -47,32 +47,31 @@ jobs:
       - name: Playit tunnel
         id: tunnel
         run: |
-          # Install playit (daemon auto-starts as root)
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
           sleep 10
 
-          echo "========== PLAYIT STATUS =========="
-          systemctl status playit.service --no-pager -n 3 2>/dev/null || true
-          echo ""
-
           if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
-            # Already have a secret - write config and restart
             echo "secret = \"${{ secrets.PLAYIT_SECRET }}\"" | sudo tee /etc/playit/playit.toml
             sudo systemctl restart playit.service
             sleep 15
-            echo "=== Tunnel info ==="
+            echo "=== Tunnel log ==="
             sudo cat /var/log/playit/playit.log 2>/dev/null | tail -20
           else
-            # No secret - run setup to get claim URL
-            # sudo + timeout handles permissions and non-interactive
-            echo "=== Running playit setup (with sudo + 15s timeout) ==="
-            sudo timeout 15 playit setup 2>&1 || true
             echo ""
-            echo "=== Checking for claim URL in daemon log ==="
-            sudo cat /var/log/playit/playit.log 2>/dev/null
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo "!!  CLAIM URL WILL APPEAR BELOW IN A FEW SECONDS"
+            echo "!!  OPEN IT IN YOUR BROWSER TO CLAIM THE AGENT"
+            echo "!!  AFTER CLAIMING, THE TUNNEL SECRET WILL BE SAVED"
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
             echo ""
-            echo "=== Checking config ==="
-            sudo cat /etc/playit/playit.toml 2>/dev/null || echo "no config yet"
-          fi
 
-          echo "========== DONE =========="
+            # Run playit setup with longer timeout - 120 seconds for user to claim
+            sudo timeout 120 playit setup 2>&1 || true
+
+            echo ""
+            echo "=== Checking config for secret ==="
+            sudo cat /etc/playit/playit.toml 2>/dev/null
+            echo ""
+            echo "=== Daemon log ==="
+            sudo cat /var/log/playit/playit.log 2>/dev/null | tail -20
+          fi
