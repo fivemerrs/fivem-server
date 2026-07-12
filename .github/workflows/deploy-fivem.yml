@@ -9,23 +9,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download resources
+      - name: Download
         run: |
           curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
-
-      - name: Download FXServer
-        run: |
           curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
           mkdir -p fxserver
           tar -xf fx.tar.xz -C fxserver
-          rm fx.tar.xz
-
-      - name: Set up resources
-        run: |
           mkdir -p server-data/resources
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Write server.cfg
+      - name: Config
         run: |
           cat > server-data/server.cfg << 'CFG'
           endpoint_add_tcp "0.0.0.0:30120"
@@ -51,54 +44,33 @@ jobs:
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           sleep 10
 
-      - name: Install and setup playit
-        id: playit
+      - name: Setup playit tunnel
+        id: tunnel
         run: |
-          # Install playit - this also auto-starts the daemon as a systemd service
+          # Install (daemon auto-starts)
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
+          sleep 5
 
-          # Wait for daemon to generate claim URL
-          sleep 15
+          # Add runner to playit group so CLI can talk to daemon
+          sudo usermod -aG playit $USER
 
-          echo "========== PLAYIT DAEMON LOGS =========="
-          sudo journalctl -u playit.service --no-pager -n 100 2>/dev/null || true
-          echo "========================================"
+          echo "========== PLAYIT SETUP =========="
 
-          # If we have a secret, authenticate the daemon
           if [ -n "${{ secrets.PLAYIT_SECRET }}" ]; then
-            echo "Configuring playit with saved secret"
-            echo "${{ secrets.PLAYIT_SECRET }}" | sudo playit set-secret 2>/dev/null || \
-              sudo playit -s "${{ secrets.PLAYIT_SECRET }}" 2>/dev/null || true
-            sudo systemctl restart playit.service
+            echo "Using saved playit secret..."
+            echo "${{ secrets.PLAYIT_SECRET }}" | sg playit -c "playit setup" 2>&1 || true
             sleep 10
-            echo "=== Tunel logs after auth ==="
-            sudo journalctl -u playit.service --no-pager -n 50
+            sg playit -c "playit show-tunnel" 2>&1 || echo "tunnel not ready yet"
           else
-            echo "No secret - checking for claim URL in daemon logs..."
+            echo "Running playit setup to get claim URL..."
+            # Non-interactive setup - the claim URL should appear here
+            sg playit -c "playit setup" 2>&1
+            sleep 5
+            echo "========== DAEMON LOG =========="
+            cat /var/log/playit/playit.log 2>/dev/null || echo "no log file"
+            echo ""
+            echo "========== LOOKING FOR CLAIM =========="
+            sg playit -c "playit setup" 2>&1 | head -20
           fi
 
-          echo ""
-          echo "=== Claim URL search ==="
-          CLAIM=$(sudo journalctl -u playit.service --no-pager -n 200 2>/dev/null | grep -oP 'https?://[^\s"'"'"']*' | grep -i "claim\|playit\.gg" | head -2)
-          if [ -z "$CLAIM" ]; then
-            CLAIM=$(sudo journalctl -u playit.service --no-pager -n 200 2>/dev/null | grep -oP 'https?://[^\s"'"'"']*' | head -5)
-          fi
-          if [ -n "$CLAIM" ]; then
-            echo ""
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            echo "!!  CLAIM URL(S):"
-            echo "$CLAIM" | while read url; do
-              echo "!!  $url"
-            done
-            echo "!!"
-            echo "!!  OPEN ANY OF THESE IN YOUR BROWSER"
-            echo "!!  After claiming, the tunnel will work"
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            echo "claim_url=$CLAIM" >> $GITHUB_OUTPUT
-          else
-            echo "No claim URL found. Showing daemon status..."
-            systemctl status playit.service 2>/dev/null || true
-            echo ""
-            echo "Full journal:"
-            sudo journalctl -u playit.service --no-pager -n 200
-          fi
+          echo "========== DONE =========="
