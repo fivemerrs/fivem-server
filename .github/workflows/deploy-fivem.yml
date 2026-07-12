@@ -16,18 +16,15 @@ jobs:
       - name: Download FXServer
         run: |
           FX_URL="https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          echo "Downloading FXServer from: $FX_URL"
           curl -L -o fx.tar.xz "$FX_URL"
           mkdir -p fxserver
           tar -xf fx.tar.xz -C fxserver
           rm fx.tar.xz
-          ls fxserver/
 
       - name: Set up resources
         run: |
           mkdir -p server-data/resources
           unzip -qo resources.zip -d server-data/resources/
-          ls -la server-data/resources/
 
       - name: Write server.cfg
         run: |
@@ -53,22 +50,39 @@ jobs:
         run: |
           curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
 
-      - name: Start server + tunnel
+      - name: Start FiveM server
         run: |
           cd fxserver
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
-          sleep 15
-          nohup playit > ../playit.log 2>&1 &
-          sleep 5
-          echo "=== Server started ==="
-          echo "Server PID: $(pgrep -f FXServer || echo 'not found')"
-          echo "playit PID: $(pgrep playit || echo 'not found')"
+          sleep 10
+          echo "FXServer PID: $(pgrep -f FXServer || echo 'not found')"
 
-      - name: Wait for tunnel
+      - name: Start playit and capture claim URL
         run: |
-          sleep 30
-          cat playit.log | grep -i "tunnel\|address\|listen" || true
-          echo "=== Tunnel info above ==="
+          nohup playit > playit.log 2>&1 &
+          PLAYIT_PID=$!
+          echo "playit PID: $PLAYIT_PID"
+          echo ""
+          echo "========================================="
+          echo "  WAITING FOR PLAYIT TO INITIALIZE..."
+          echo "========================================="
+          sleep 15
+          echo ""
+          echo "=== FULL PLAYIT OUTPUT ==="
+          cat playit.log
+          echo "=== END PLAYIT OUTPUT ==="
+          echo ""
+          echo "Looking for claim URL in output..."
+          grep -i "claim" playit.log || echo "No claim URL found yet"
+          grep -i "secret" playit.log || echo "No secret found"
+          grep -i "tunnel" playit.log || echo "No tunnel info found"
+          grep -i "address" playit.log || echo "No address found"
+          grep -i "listen" playit.log || echo "No listen info found"
+          echo ""
+          echo "========================================="
+          echo "  OPEN YOUR PLAYIT DASHBOARD:"
+          echo "  https://playit.gg/account/agents"
+          echo "========================================="
 
       - name: Keep alive
         run: |
