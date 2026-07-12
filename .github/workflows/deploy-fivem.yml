@@ -17,17 +17,21 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Tunnel setup (frp - open source)
+      - name: Install Portwarp CLI
+        run: curl -fsSL https://portwarp.com/download/install.sh | bash
+
+      - name: Tunnel setup
         id: tunnel
         env:
-          FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
-          FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
-          FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
-          FRP_PUBLIC_PORT: ${{ secrets.FRP_PUBLIC_PORT }}
+          PORTWARP_API_KEY: ${{ secrets.PORTWARP_API_KEY }}
+          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+          PLAYIT_EMAIL: ${{ secrets.PLAYIT_EMAIL }}
+          PLAYIT_PASSWORD: ${{ secrets.PLAYIT_PASSWORD }}
           LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/frp-setup.sh scripts/frp-keepalive.sh
-          scripts/frp-setup.sh | tee tunnel.log
+          chmod +x scripts/tunnel-setup.sh scripts/playit-setup.sh
+          scripts/tunnel-setup.sh | tee tunnel.log
 
       - name: Write server config
         env:
@@ -49,7 +53,6 @@ jobs:
           ensure basic-gamemode
           ensure hardcap
           CFG
-          cat server-data/server.cfg
 
       - name: Start FXServer
         run: |
@@ -59,22 +62,31 @@ jobs:
             sleep 3
             if curl -sf http://localhost:30120/info.json >/dev/null 2>&1; then
               echo "FXServer ready"
-              curl -s http://localhost:30120/info.json | head -c 300
               exit 0
             fi
           done
-          echo "FXServer slow — continuing, last logs:"
-          tail -n 30 ../fivem.log || true
+          echo "FXServer slow — continuing"
+          tail -n 20 ../fivem.log || true
 
       - name: Print connect info
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: frp (github.com/fatedier/frp)"
+          echo "#  backend: ${{ steps.tunnel.outputs.tunnel_backend }}"
           echo "############################################"
 
       - name: Keep tunnel + server alive
+        env:
+          PORTWARP_CREDENTIALS: ${{ secrets.PORTWARP_CREDENTIALS }}
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+          TUNNEL_BACKEND: ${{ steps.tunnel.outputs.tunnel_backend }}
         run: |
-          chmod +x scripts/frp-keepalive.sh
           tail -f fivem.log &
-          scripts/frp-keepalive.sh
+          if [ "$TUNNEL_BACKEND" = "portwarp" ] && [ -n "$TUNNEL_ID" ]; then
+            chmod +x scripts/portwarp-keepalive.sh
+            scripts/portwarp-keepalive.sh "$TUNNEL_ID"
+          else
+            echo "playit agent active — holding job open"
+            while docker ps --format '{{.Names}}' | grep -q playit; do sleep 30; done
+            tail -f /dev/null
+          fi
