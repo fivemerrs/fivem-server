@@ -46,9 +46,11 @@ jobs:
           ensure Godzilla
           CFG
 
-      - name: Install playit.gg
+      - name: Install playit + cloudflared
         run: |
-          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y
+          curl -fsSL https://packages.playit.gg/install.sh | bash -s -- -y || true
+          curl -L -o /usr/local/bin/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" || true
+          chmod +x /usr/local/bin/cloudflared || true
 
       - name: Start FiveM server
         run: |
@@ -57,41 +59,39 @@ jobs:
           sleep 10
           echo "FXServer PID: $(pgrep -f FXServer || echo 'not found')"
 
-      - name: Start playit and capture claim URL
+      - name: Start tunnel (cloudflared)
         run: |
-          nohup playit > playit.log 2>&1 &
-          PLAYIT_PID=$!
-          echo "playit PID: $PLAYIT_PID"
-          echo ""
-          echo "========================================="
-          echo "  WAITING FOR PLAYIT TO INITIALIZE..."
-          echo "========================================="
+          cloudflared tunnel --url http://localhost:30120 > cloudflared.log 2>&1 &
+          CF_PID=$!
+          echo "cloudflared PID: $CF_PID"
           sleep 15
-          echo ""
-          echo "=== FULL PLAYIT OUTPUT ==="
-          cat playit.log
-          echo "=== END PLAYIT OUTPUT ==="
-          echo ""
-          echo "Looking for claim URL in output..."
-          grep -i "claim" playit.log || echo "No claim URL found yet"
-          grep -i "secret" playit.log || echo "No secret found"
-          grep -i "tunnel" playit.log || echo "No tunnel info found"
-          grep -i "address" playit.log || echo "No address found"
-          grep -i "listen" playit.log || echo "No listen info found"
-          echo ""
-          echo "========================================="
-          echo "  OPEN YOUR PLAYIT DASHBOARD:"
-          echo "  https://playit.gg/account/agents"
-          echo "========================================="
+          echo "=== CLOUDFLARED OUTPUT ==="
+          cat cloudflared.log
+          echo "=== END ==="
+          TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log | head -1)
+          if [ -n "$TUNNEL_URL" ]; then
+            echo "TUNNEL_URL=$TUNNEL_URL" >> $GITHUB_ENV
+            echo ""
+            echo "============================================"
+            echo "  YOUR SERVER ADDRESS: $TUNNEL_URL"
+            echo "  Connect in FiveM: connect $TUNNEL_URL"
+            echo "============================================"
+          else
+            echo "No tunnel URL found, check cloudflared.log"
+          fi
 
       - name: Keep alive
         run: |
           for i in $(seq 1 720); do
             if ! pgrep -f FXServer > /dev/null 2>&1; then
-              echo "FXServer died at ${i}x10s - restarting"
+              echo "FXServer died - restarting"
               cd fxserver
               nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
               cd ..
+            fi
+            if ! pgrep -f cloudflared > /dev/null 2>&1; then
+              echo "cloudflared died - restarting"
+              cloudflared tunnel --url http://localhost:30120 >> cloudflared.log 2>&1 &
             fi
             sleep 10
           done
