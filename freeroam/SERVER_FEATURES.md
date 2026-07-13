@@ -4,13 +4,15 @@ Ephemeral ESX Legacy freeroam on GitHub Actions + Localtonet. MariaDB on the run
 
 ## Connect
 
-Use the **ADDED** address from the latest deploy (not an old dashboard port):
+**Easiest:** double-click `Start-FiveM-Server.bat` (see [`START_SERVER.md`](../START_SERVER.md)). Fill local `fivem-launcher.env` with `GH_TOKEN` + optional `LOCALTONET_API_KEY` — never commit that file.
+
+Or use the **ADDED** address from the latest deploy (not an old dashboard port):
 
 ```
 connect HOST:PORT
 ```
 
-If public refuses: Localtonet → My Tunnels → **Start** the **UDP_TCP** tunnel for AuthToken **Default**, then retry.
+If public refuses: Localtonet → My Tunnels → **Start** the **UDP_TCP** tunnel for AuthToken **Default**, then retry. With a Dashboard **ApiKey**, the launcher can Start the tunnel via API automatically.
 
 ## Zones
 
