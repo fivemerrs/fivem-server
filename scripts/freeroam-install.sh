@@ -98,8 +98,11 @@ p.write_text(text, encoding="utf-8")
 print("patched ox_inventory items exports")
 PY
 
-log "Copy fr_hub"
+log "Copy fr_hub + freeroam extras"
 cp -a "$ROOT/freeroam/resources/fr_hub" "$RES/fr_hub"
+cp -a "$ROOT/freeroam/resources/fr_world" "$RES/fr_world"
+cp -a "$ROOT/freeroam/resources/fr_vehicles" "$RES/fr_vehicles"
+cp -a "$ROOT/freeroam/resources/fr_teams" "$RES/fr_teams"
 
 # Improve redzone ammo counts in server loadout
 python3 - <<'PY'
