@@ -4,8 +4,8 @@ lua54 'yes'
 
 name 'fr_hub'
 author 'fivemerrs'
-description 'Freeroam spawn hub NPCs (clothes + shop markers context)'
-version '1.0.0'
+description 'Freeroam spawn hub — marker shops (no ped NPCs)'
+version '1.1.0'
 
 shared_scripts {
     '@ox_lib/init.lua',
