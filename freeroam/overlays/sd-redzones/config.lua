@@ -1,10 +1,11 @@
 Config = {}
 
--- Grove Street redzone (PvP)
+-- Mid-range redzone ~300m south of Legion (Mission Row / downtown)
+-- Green spawn: 222.20, -864.02 | Red: 58.50, -1115.00 (~306m)
 Config.Zones = {
     {
-        coords = vector3(106.75, -1941.19, 20.8),
-        radius = 100.0
+        coords = vector3(58.50, -1115.00, 29.40),
+        radius = 80.0
     },
 }
 
