@@ -4,7 +4,7 @@ Config.EnableNotifications = true
 Config.GreenzonesCommand = 'setzone'
 Config.GreenzonesClearCommand = 'clearzone'
 
--- Legion Square safe spawn (matches ESX DefaultSpawns)
+-- Legion Square safe spawn
 Config.GreenZones = {
     ['spawn'] = {
         coords = vec3(222.2027, -864.0162, 30.2922),
