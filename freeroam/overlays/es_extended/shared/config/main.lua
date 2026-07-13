@@ -21,12 +21,17 @@ Config.Accounts = {
     },
 }
 
--- Freeroam: $5000 cash on first join
-Config.StartingAccountMoney = { money = 5000, bank = 0 }
+-- Freeroam starter: $50,000 cash
+Config.StartingAccountMoney = { money = 50000, bank = 0 }
 
-Config.StartingInventoryItems = false
+-- Starter pistols + ammo (ox_inventory item names)
+Config.StartingInventoryItems = {
+    { name = 'WEAPON_PISTOL', count = 1 },
+    { name = 'WEAPON_COMBATPISTOL', count = 1 },
+    { name = 'WEAPON_PISTOL_MK2', count = 1 },
+    { name = 'ammo-9', count = 300 },
+}
 
--- Legion Square (inside green safe zone)
 Config.DefaultSpawns = {
     { x = 222.2027, y = -864.0162, z = 30.2922, heading = 1.0 },
 }
@@ -47,7 +52,7 @@ Config.ValidCharacterSets = {
 Config.EnablePaycheck = false
 Config.LogPaycheck = false
 Config.EnableSocietyPayouts = false
-Config.MaxWeight = 40
+Config.MaxWeight = 60
 Config.PaycheckInterval = 7 * 60000
 Config.SaveDeathStatus = true
 Config.EnableDebug = false
