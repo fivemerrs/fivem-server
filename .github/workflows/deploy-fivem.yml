@@ -13,12 +13,18 @@ jobs:
         run: |
           curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
           curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          mkdir -p fxserver server-data
+          mkdir -p fxserver server-data/resources
           tar -xf fx.tar.xz -C fxserver
           # official base resources (mapmanager, spawnmanager, etc.)
-          git clone --depth 1 https://github.com/citizenfx/cfx-server-data.git /tmp/cfx-server-data
-          cp -a /tmp/cfx-server-data/resources server-data/resources
+          curl -fsSL -o /tmp/cfx-server-data.zip https://github.com/citizenfx/cfx-server-data/archive/refs/heads/master.zip
+          unzip -qo /tmp/cfx-server-data.zip -d /tmp
+          cp -a /tmp/cfx-server-data-master/resources/. server-data/resources/
+
           unzip -qo resources.zip -d server-data/resources/
+          echo "=== resources tree ==="
+          find server-data/resources -maxdepth 3 -type d | head -n 80
+          test -d server-data/resources/\[managers\]/mapmanager || test -d server-data/resources/mapmanager
+          ls -la server-data/resources/\[managers\]/mapmanager 2>/dev/null || ls -la server-data/resources/mapmanager
 
       - name: Write server config
         env:
@@ -55,23 +61,24 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq screen
-          cd fxserver
-          screen -dmS fivem bash -lc 'bash run.sh +exec ../server-data/server.cfg 2>&1 | tee ../fivem.log'
+          # run from server-data so resources/ next to server.cfg is scanned
+          screen -dmS fivem bash -lc 'cd server-data && bash ../fxserver/run.sh +exec server.cfg 2>&1 | tee ../fivem.log'
           for i in $(seq 1 90); do
             sleep 3
             if curl -sf http://127.0.0.1:30120/info.json >/dev/null 2>&1; then
               echo "FXServer ready"
-              curl -s http://127.0.0.1:30120/info.json | head -c 400
+              curl -s http://127.0.0.1:30120/info.json | head -c 500
               echo
+              grep -E 'Found [0-9]+ resources|Couldn.t find resource' fivem.log | head -n 40 || true
               exit 0
             fi
             if (( i % 10 == 0 )); then
               echo "wait $i"
-              tail -n 15 ../fivem.log || true
+              tail -n 15 fivem.log || true
             fi
           done
           echo "FXServer NOT ready"
-          tail -n 80 ../fivem.log || true
+          tail -n 80 fivem.log || true
           exit 1
 
       - name: Localtonet TCP+UDP tunnel
