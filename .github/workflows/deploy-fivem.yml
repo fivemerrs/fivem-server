@@ -28,16 +28,10 @@ jobs:
         run: |
           SQL_DIR="server-data/sql"
           if [ -f "$SQL_DIR/legacy.sql" ]; then
-            sudo mysql es_extended < "$SQL_DIR/legacy.sql"
+            sudo mysql es_extended < "$SQL_DIR/legacy.sql" || true
             echo "imported legacy.sql"
-          else
-            # fallback: import per-resource SQL from es_extended
-            find server-data/resources -name '*.sql' | while read -r f; do
-              echo "import $f"
-              sudo mysql es_extended < "$f" || true
-            done
           fi
-          # identity/skin extras if not in legacy
+          # identity/skin extras (ignore duplicate-column if already in legacy)
           for f in \
             server-data/resources/\[core\]/esx_identity/esx_identity.sql \
             server-data/resources/\[core\]/esx_skin/esx_skin.sql
