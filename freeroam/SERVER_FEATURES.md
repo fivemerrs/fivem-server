@@ -1,64 +1,62 @@
 # Freeroam server features
 
-Ephemeral ESX Legacy freeroam on GitHub Actions + Localtonet. MariaDB runs on the runner — **data resets every redeploy**.
+Ephemeral ESX Legacy freeroam on GitHub Actions + Localtonet. MariaDB on the runner — **data resets every redeploy**.
 
 ## Connect
 
-After a successful deploy, use the address from the workflow summary / `connect.txt`:
+Use the **ADDED** address from the latest deploy (not an old dashboard port):
 
 ```
 connect HOST:PORT
 ```
 
-If public probe fails: Localtonet dashboard → My Tunnels → **Start** the UDP_TCP tunnel for the AuthToken, then redeploy.
+If public refuses: Localtonet → My Tunnels → **Start** the **UDP_TCP** tunnel for AuthToken **Default**, then retry.
 
-## Zones (defaults)
+## Zones
 
-| Zone | Script | Center | Radius | Blip |
-|------|--------|--------|--------|------|
-| **Green safe spawn** | `lation_greenzones` | `222.20, -864.02, 30.29` (Legion Square) | `80.0` | Green radius |
-| **Red PvP** | `sd-redzones` | `106.75, -1941.19, 20.80` (Grove St) | `100.0` | Red sphere |
+| Zone | Center | Radius | Notes |
+|------|--------|--------|-------|
+| **Green safe spawn** | `222.20, -864.02, 30.29` (Legion) | `80` | Invincible / no fire |
+| **Red PvP** | `58.50, -1115.00, 29.40` (Mission Row / downtown) | `80` | ~300m from spawn; loadout + kill cash |
 
-Green zone: no shooting, invincible, weapons removed from hand, text UI.  
-Red zone: temporary loadout on enter, kill cash reward, death ejects + revives outside.
+## World
 
-Players spawn via ESX `Config.DefaultSpawns` at the Legion green zone.
+- Ambient **NPC peds + traffic = 0** (`fr_world`)
+- Spawn hub shops use **markers only** (no shop ped models). Press **E** at clothes / guns / supplies markers.
 
-## Economy
+## Economy / starter
 
-- Starter cash: **$5000** (`money` account / ox_inventory money item)
-- Redzone kill rewards: **$100–$500** (configured in `sd-redzones`)
-- Paycheck disabled for this freeroam build
+- Starter cash: **$50,000**
+- Starter weapons: pistol, combat pistol, pistol mk2 + **300× ammo-9**
+- Shops still sell more guns/ammo/armour/bandages
 
-## Spawn hub NPCs (Legion)
+## Controls
 
-| NPC | Approx coords | Action |
-|-----|---------------|--------|
-| Clothes | `218.5, -861.0, 30.3` | Opens `esx_skin` saveable menu |
-| Gun shop | `224.0, -858.5, 30.3` | Walk-up **Freeroam Armory** marker (ox_inventory) |
-| Supplies | `228.5, -856.0, 30.3` | Walk-up **Freeroam Supplies** (ammo / armour / bandage) |
+| Key / cmd | Action |
+|-----------|--------|
+| **F3** | Spawn freeroam car (`kanjo` default — from your FF Menyoo pack). Deletes previous F3 car. |
+| `/f3car <model>` | Select model (`kanjo`, `jester`, `remus`, …) then F3 |
+| **F6** / `/team` | Teams menu (create / join / leave) |
+| **E** at hub markers | Clothes / armory / supplies |
 
-Press **E** near shop markers. Clothes: press **E** at the clothing ped.
+## Teams (`fr_teams`)
 
-### Shop prices (approx)
+Lightweight custom teams (not a paid squad script): teammate blips, no friendly fire between teammates, F6 menu.
 
-**Armory:** pistol $1500, SMG $3500, carbine $5000, knife $200, bat $150 (+ ammo).  
-**Supplies:** ammo-9 $25, ammo-rifle $40, armour $750, bandage $50, medikit $200.
+## Admin / txAdmin
 
-## Stack (ensure order)
-
-`oxmysql` → `ox_lib` → `es_extended` → `[core]` (sans `esx_inventory` / `esx_multicharacter`) → `ox_inventory` → zones → `fr_hub`
-
-No vMenu. No Godzilla / wave-anticheat.
+- **Full txAdmin web panel** is not used on ephemeral GHA (txAdmin wraps FXServer as a separate host process; not practical here).
+- Instead: ACE `group.admin` with full `command` allow.
+- Set GitHub secret **`ADMIN_IDENTIFIERS`** to your id(s), comma-separated, e.g. `license:abcd1234` or `fivem:123456` (no `identifier.` prefix — the workflow adds it).
+- Without that secret, nobody gets admin ACE automatically.
 
 ## Redeploy
 
 ```bash
-# from workspace, with env set:
-#   GH_TOKEN, LOCALTONET_AUTHTOKEN, LOCALTONET_CONNECT
+# GH_TOKEN, LOCALTONET_AUTHTOKEN (Default), LOCALTONET_CONNECT
 python scripts/push_and_deploy.py
 ```
 
 ## Firebase
 
-Not used. ESX / ox_inventory / oxmysql require MariaDB/MySQL. Firebase cannot replace that without rewriting the framework.
+Not used. ESX / ox_inventory need MariaDB/MySQL.
