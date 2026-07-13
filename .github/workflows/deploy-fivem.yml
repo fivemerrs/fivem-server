@@ -9,24 +9,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download FXServer + base resources
+      - name: Install MariaDB + tools
         run: |
-          curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
-          curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          mkdir -p fxserver server-data/resources
-          tar -xf fx.tar.xz -C fxserver
-          # official base resources (mapmanager, spawnmanager, etc.)
-          curl -fsSL -o /tmp/cfx-server-data.zip https://github.com/citizenfx/cfx-server-data/archive/refs/heads/master.zip
-          unzip -qo /tmp/cfx-server-data.zip -d /tmp
-          cp -a /tmp/cfx-server-data-master/resources/. server-data/resources/
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mariadb-server unzip curl screen python3
+          sudo service mariadb start
+          sudo mysql -e "CREATE DATABASE IF NOT EXISTS es_extended CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          sudo mysql -e "CREATE USER IF NOT EXISTS 'fivem'@'localhost' IDENTIFIED BY 'fivem';"
+          sudo mysql -e "GRANT ALL PRIVILEGES ON es_extended.* TO 'fivem'@'localhost'; FLUSH PRIVILEGES;"
+          echo "MariaDB ready"
 
-          unzip -qo resources.zip -d server-data/resources/
-          echo "=== resources tree ==="
-          find server-data/resources -maxdepth 3 -type d | head -n 80
-          test -d server-data/resources/\[managers\]/mapmanager || test -d server-data/resources/mapmanager
-          ls -la server-data/resources/\[managers\]/mapmanager 2>/dev/null || ls -la server-data/resources/mapmanager
+      - name: Download FXServer + freeroam stack
+        run: |
+          chmod +x scripts/freeroam-install.sh
+          scripts/freeroam-install.sh
 
-      - name: Write server config
+      - name: Import SQL
+        run: |
+          SQL_DIR="server-data/sql"
+          if [ -f "$SQL_DIR/legacy.sql" ]; then
+            sudo mysql es_extended < "$SQL_DIR/legacy.sql"
+            echo "imported legacy.sql"
+          else
+            # fallback: import per-resource SQL from es_extended
+            find server-data/resources -name '*.sql' | while read -r f; do
+              echo "import $f"
+              sudo mysql es_extended < "$f" || true
+            done
+          fi
+          # identity/skin extras if not in legacy
+          for f in \
+            server-data/resources/\[core\]/esx_identity/esx_identity.sql \
+            server-data/resources/\[core\]/esx_skin/esx_skin.sql
+          do
+            if [ -f "$f" ]; then
+              sudo mysql es_extended < "$f" || true
+            fi
+          done
+
+      - name: Write server.cfg
         env:
           CONNECT_ADDR: ${{ secrets.LOCALTONET_CONNECT }}
         run: |
@@ -34,21 +55,43 @@ jobs:
           cat > server-data/server.cfg << 'CFG'
           endpoint_add_tcp "0.0.0.0:30120"
           endpoint_add_udp "0.0.0.0:30120"
+          sv_endpointPrivacy true
           sv_maxclients 8
-          sv_hostname "FiveM Test Server"
-          sets sv_projectName "FiveM Test"
-          sets sv_projectDesc "Localtonet test"
+          sv_hostname "Freeroam | Safe Spawn + Redzone"
+          sets sv_projectName "Freeroam GHA"
+          sets sv_projectDesc "ESX Legacy freeroam — green spawn, redzone PvP, shops"
+          sets tags "freeroam, esx, pvp, redzone"
           sv_master1 ""
+          set resources_useSystemChat true
+          set onesync on
+          sv_enforceGameBuild 3095
+          setr esx:locale "en"
+          setr inventory:framework "esx"
+          set inventory:accounts ["money"]
+          set mysql_connection_string "mysql://fivem:fivem@127.0.0.1/es_extended?charset=utf8mb4"
           ensure mapmanager
           ensure chat
           ensure spawnmanager
           ensure sessionmanager
-          ensure basic-gamemode
           ensure hardcap
+          ensure baseevents
+          ensure oxmysql
+          ensure ox_lib
+          ensure es_extended
+          ensure [core]
+          ensure ox_inventory
+          ensure lation_greenzones
+          ensure sd-redzones
+          ensure fr_hub
+          add_principal group.admin group.user
+          add_ace group.admin command allow
+          add_ace group.admin command.quit deny
+          add_ace resource.es_extended command.add_ace allow
+          add_ace resource.es_extended command.add_principal allow
+          add_ace resource.es_extended command.remove_principal allow
+          add_ace resource.es_extended command.stop allow
           CFG
-          # strip accidental leading spaces from heredoc if any
           sed -i 's/^[[:space:]]*//' server-data/server.cfg
-          # inject secrets/overrides without indent issues
           {
             echo "sv_licenseKey \"${{ secrets.SV_LICENSE_KEY }}\""
             echo "sv_listingHostOverride \"${CONNECT_HOST}\""
@@ -59,26 +102,23 @@ jobs:
 
       - name: Start FXServer (screen)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq screen
-          # run from server-data so resources/ next to server.cfg is scanned
           screen -dmS fivem bash -lc 'cd server-data && bash ../fxserver/run.sh +exec server.cfg 2>&1 | tee ../fivem.log'
-          for i in $(seq 1 90); do
+          for i in $(seq 1 120); do
             sleep 3
             if curl -sf http://127.0.0.1:30120/info.json >/dev/null 2>&1; then
               echo "FXServer ready"
-              curl -s http://127.0.0.1:30120/info.json | head -c 500
+              curl -s http://127.0.0.1:30120/info.json | head -c 800
               echo
-              grep -E 'Found [0-9]+ resources|Couldn.t find resource' fivem.log | head -n 40 || true
+              grep -E 'Found [0-9]+ resources|Couldn.t find resource|Error|Started resource' fivem.log | head -n 60 || true
               exit 0
             fi
             if (( i % 10 == 0 )); then
               echo "wait $i"
-              tail -n 15 fivem.log || true
+              tail -n 25 fivem.log || true
             fi
           done
           echo "FXServer NOT ready"
-          tail -n 80 fivem.log || true
+          tail -n 120 fivem.log || true
           exit 1
 
       - name: Localtonet TCP+UDP tunnel
@@ -103,6 +143,8 @@ jobs:
           curl -sv --max-time 15 "http://${CONNECT_ADDR}/info.json" 2>&1 | tail -n 50 || true
           echo "=== agent log ==="
           cat localtonet-agent.log || true
+          echo "=== recent fivem errors ==="
+          grep -iE 'error|fail|couldn' fivem.log | tail -n 40 || true
 
       - name: Print connect info
         run: |
@@ -114,6 +156,8 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "connect ${{ steps.tunnel.outputs.connect_address }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See freeroam/SERVER_FEATURES.md for zones, shops, starter cash." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload connect address
         uses: actions/upload-artifact@v4
@@ -123,6 +167,7 @@ jobs:
             connect.txt
             localtonet-agent.log
             fivem.log
+            freeroam/SERVER_FEATURES.md
           retention-days: 1
           if-no-files-found: warn
 
