@@ -17,23 +17,11 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Localtonet TCP+UDP tunnel
-        id: tunnel
-        env:
-          LOCALTONET_AUTHTOKEN: ${{ secrets.LOCALTONET_AUTHTOKEN }}
-          LOCALTONET_CONNECT: ${{ secrets.LOCALTONET_CONNECT }}
-          LOCAL_PORT: "30120"
-        run: |
-          chmod +x scripts/localtonet-setup.sh scripts/localtonet-keepalive.sh
-          scripts/localtonet-setup.sh
-          test -s connect.txt
-          echo "tunnel output connect=$(cat connect.txt)"
-
       - name: Write server config
         env:
-          CONNECT_ADDR: ${{ steps.tunnel.outputs.connect_address }}
-          CONNECT_HOST: ${{ steps.tunnel.outputs.connect_host }}
+          CONNECT_ADDR: ${{ secrets.LOCALTONET_CONNECT }}
         run: |
+          CONNECT_HOST="${CONNECT_ADDR%%:*}"
           cat > server-data/server.cfg << CFG
           endpoint_add_tcp "0.0.0.0:30120"
           endpoint_add_udp "0.0.0.0:30120"
@@ -63,8 +51,21 @@ jobs:
               exit 0
             fi
           done
-          echo "FXServer slow — continuing"
-          tail -n 40 ../fivem.log || true
+          echo "FXServer NOT ready"
+          tail -n 60 ../fivem.log || true
+          exit 1
+
+      - name: Localtonet TCP+UDP tunnel
+        id: tunnel
+        env:
+          LOCALTONET_AUTHTOKEN: ${{ secrets.LOCALTONET_AUTHTOKEN }}
+          LOCALTONET_CONNECT: ${{ secrets.LOCALTONET_CONNECT }}
+          LOCAL_PORT: "30120"
+        run: |
+          chmod +x scripts/localtonet-setup.sh scripts/localtonet-keepalive.sh
+          scripts/localtonet-setup.sh
+          test -s connect.txt
+          echo "tunnel output connect=$(cat connect.txt)"
 
       - name: Verify local then public path
         env:
@@ -73,10 +74,10 @@ jobs:
           echo "=== local info.json ==="
           curl -sv --max-time 10 http://127.0.0.1:30120/info.json 2>&1 | tail -n 30 || true
           echo "=== public http://$CONNECT_ADDR/info.json ==="
-          curl -sv --max-time 15 "http://${CONNECT_ADDR}/info.json" 2>&1 | tail -n 40 || true
-          echo "=== localtonet agent ==="
+          curl -sv --max-time 15 "http://${CONNECT_ADDR}/info.json" 2>&1 | tail -n 50 || true
+          echo "=== agent log ==="
           pgrep -a localtonet || true
-          tail -n 50 localtonet-agent.log || true
+          cat localtonet-agent.log || true
 
       - name: Print connect info
         run: |
@@ -89,8 +90,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "connect ${{ steps.tunnel.outputs.connect_address }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "After agent online: Stop+Start the UDP/TCP tunnel in Localtonet dashboard." >> $GITHUB_STEP_SUMMARY
+          echo "Refresh My Tunnels — use the Server Port shown after agent connects." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload connect address
         uses: actions/upload-artifact@v4
@@ -99,6 +99,7 @@ jobs:
           path: |
             connect.txt
             localtonet-agent.log
+            fivem.log
           retention-days: 1
           if-no-files-found: warn
 
