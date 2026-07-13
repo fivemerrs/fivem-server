@@ -76,14 +76,19 @@ jobs:
           ensure ox_inventory
           ensure lation_greenzones
           ensure sd-redzones
+          ensure fr_world
           ensure fr_hub
+          ensure fr_vehicles
+          ensure fr_teams
           add_principal group.admin group.user
           add_ace group.admin command allow
           add_ace group.admin command.quit deny
+          add_ace group.admin esx.fullaccess allow
           add_ace resource.es_extended command.add_ace allow
           add_ace resource.es_extended command.add_principal allow
           add_ace resource.es_extended command.remove_principal allow
           add_ace resource.es_extended command.stop allow
+          # Admins injected below from ADMIN_IDENTIFIERS secret (license:/fivem:/steam:)
           CFG
           sed -i 's/^[[:space:]]*//' server-data/server.cfg
           {
@@ -91,6 +96,21 @@ jobs:
             echo "sv_listingHostOverride \"${CONNECT_HOST}\""
             echo "sv_listingIPOverride \"${CONNECT_ADDR}\""
           } >> server-data/server.cfg
+          # Admin principals (comma/space separated identifiers)
+          ADMINS="${{ secrets.ADMIN_IDENTIFIERS }}"
+          if [ -n "$ADMINS" ]; then
+            echo "# --- freeroam admins ---" >> server-data/server.cfg
+            echo "$ADMINS" | tr ',;' ' ' | tr -s ' ' '\n' | while read -r id; do
+              [ -z "$id" ] && continue
+              case "$id" in
+                identifier.*) echo "add_principal ${id} group.admin" >> server-data/server.cfg ;;
+                *) echo "add_principal identifier.${id} group.admin" >> server-data/server.cfg ;;
+              esac
+              echo "Added admin principal ${id}"
+            done
+          else
+            echo "# ADMIN_IDENTIFIERS secret empty — set license:xxxx or fivem:xxxx for admin ACE" >> server-data/server.cfg
+          fi
           echo "=== server.cfg ==="
           cat server-data/server.cfg
 
