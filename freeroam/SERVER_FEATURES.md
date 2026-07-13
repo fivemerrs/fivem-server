@@ -30,24 +30,30 @@ If public refuses: Localtonet → My Tunnels → **Start** the **UDP_TCP** tunne
 - Starter weapons: pistol, combat pistol, pistol mk2 + **300× ammo-9**
 - Shops still sell more guns/ammo/armour/bandages
 
-## Controls
+## F3 car (Fast & Furious 1 lore pack)
+
+The [GTA5-Mods pack](https://www.gta5-mods.com/vehicles/fast-furious-1-lore-friendly-car-pack-diablo317) is a **21KB Menyoo XML preset pack for vanilla GTA vehicles** — it is **not** a streamed addon (no `.yft`/`.ytd`). FiveM cannot “install” it as a stream resource.
+
+**F3** spawns **Dom’s Charger stand-in: `dukes`**, with mods from `FF1 Dukes.xml` (black custom paint, turbo, performance mods).
 
 | Key / cmd | Action |
 |-----------|--------|
-| **F3** | Spawn freeroam car (`kanjo` default — from your FF Menyoo pack). Deletes previous F3 car. |
-| `/f3car <model>` | Select model (`kanjo`, `jester`, `remus`, …) then F3 |
-| **F6** / `/team` | Teams menu (create / join / leave) |
-| **E** at hub markers | Clothes / armory / supplies |
+| **F3** | Spawn current Fast1 car (default `dukes`). Deletes previous F3 car. |
+| `/f3car penumbra` | Brian’s Eclipse stand-in |
+| `/f3car jester` | Supra stand-in |
+| `/f3car remus` / `kanjo` | Letty Silvia stand-ins |
+
+Optional accurate addons linked in the pack readme (Kanjo SJ / Jester Classic) are separate downloads — not bundled.
 
 ## Teams (`fr_teams`)
 
-Lightweight custom teams (not a paid squad script): teammate blips, no friendly fire between teammates, F6 menu.
+Lightweight custom teams: **F6** / `/team` — create/join/leave, teammate blips, no friendly fire between teammates.
 
 ## Admin / txAdmin
 
-- **Full txAdmin web panel** is not used on ephemeral GHA (txAdmin wraps FXServer as a separate host process; not practical here).
-- Instead: ACE `group.admin` with full `command` allow.
-- Set GitHub secret **`ADMIN_IDENTIFIERS`** to your id(s), comma-separated, e.g. `license:abcd1234` or `fivem:123456` (no `identifier.` prefix — the workflow adds it).
+- **Full txAdmin web panel** is not used on ephemeral GHA (txAdmin wraps FXServer as a host process).
+- ACE `group.admin` with full `command` allow.
+- Set GitHub secret **`ADMIN_IDENTIFIERS`** to your id(s), e.g. `license:abcd1234` or `fivem:123456`.
 - Without that secret, nobody gets admin ACE automatically.
 
 ## Redeploy
