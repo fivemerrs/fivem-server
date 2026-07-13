@@ -56,13 +56,27 @@ jobs:
           nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
           for i in $(seq 1 120); do
             sleep 3
-            if curl -sf http://localhost:30120/info.json >/dev/null 2>&1; then
+            if curl -sf http://127.0.0.1:30120/info.json >/dev/null 2>&1; then
               echo "FXServer ready"
+              curl -s http://127.0.0.1:30120/info.json | head -c 400 || true
+              echo
               exit 0
             fi
           done
           echo "FXServer slow — continuing"
-          tail -n 20 ../fivem.log || true
+          tail -n 40 ../fivem.log || true
+
+      - name: Verify local then public path
+        env:
+          CONNECT_ADDR: ${{ steps.tunnel.outputs.connect_address }}
+        run: |
+          echo "=== local info.json ==="
+          curl -sv --max-time 10 http://127.0.0.1:30120/info.json 2>&1 | tail -n 30 || true
+          echo "=== public http://$CONNECT_ADDR/info.json ==="
+          curl -sv --max-time 15 "http://${CONNECT_ADDR}/info.json" 2>&1 | tail -n 40 || true
+          echo "=== localtonet agent ==="
+          pgrep -a localtonet || true
+          tail -n 50 localtonet-agent.log || true
 
       - name: Print connect info
         run: |
@@ -75,6 +89,8 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "connect ${{ steps.tunnel.outputs.connect_address }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "After agent online: Stop+Start the UDP/TCP tunnel in Localtonet dashboard." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload connect address
         uses: actions/upload-artifact@v4
