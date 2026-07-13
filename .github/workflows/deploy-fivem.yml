@@ -17,14 +17,15 @@ jobs:
           tar -xf fx.tar.xz -C fxserver
           unzip -qo resources.zip -d server-data/resources/
 
-      - name: Pinggy tunnel setup
+      - name: Localtonet TCP+UDP tunnel
         id: tunnel
         env:
-          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
+          LOCALTONET_AUTHTOKEN: ${{ secrets.LOCALTONET_AUTHTOKEN }}
+          LOCALTONET_CONNECT: ${{ secrets.LOCALTONET_CONNECT }}
           LOCAL_PORT: "30120"
         run: |
-          chmod +x scripts/pinggy-setup.sh scripts/pinggy-keepalive.sh
-          scripts/pinggy-setup.sh
+          chmod +x scripts/localtonet-setup.sh scripts/localtonet-keepalive.sh
+          scripts/localtonet-setup.sh
           test -s connect.txt
           echo "tunnel output connect=$(cat connect.txt)"
 
@@ -67,7 +68,7 @@ jobs:
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: pinggy TCP+UDP"
+          echo "#  backend: localtonet TCP+UDP mixed"
           echo "############################################"
           echo "${{ steps.tunnel.outputs.connect_address }}" > connect.txt
           echo "## Connect" >> $GITHUB_STEP_SUMMARY
@@ -81,16 +82,13 @@ jobs:
           name: connect-address
           path: |
             connect.txt
-            pinggy-tcp.log
-            pinggy-udp.log
-            pinggy-ps.log
+            localtonet-agent.log
           retention-days: 1
           if-no-files-found: warn
 
       - name: Keep tunnel + server alive
         env:
-          PINGGY_TOKEN: ${{ secrets.PINGGY_TOKEN }}
-          LOCAL_PORT: "30120"
+          LOCALTONET_AUTHTOKEN: ${{ secrets.LOCALTONET_AUTHTOKEN }}
         run: |
-          chmod +x scripts/pinggy-keepalive.sh
-          scripts/pinggy-keepalive.sh
+          chmod +x scripts/localtonet-keepalive.sh
+          scripts/localtonet-keepalive.sh
