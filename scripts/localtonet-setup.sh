@@ -86,34 +86,43 @@ fi
 
 sleep 3
 log "probing public http://$CONNECT/info.json"
-if ! probe_ok "$CONNECT"; then
+PUBLIC_OK=0
+if probe_ok "$CONNECT"; then
+  PUBLIC_OK=1
+else
   log "public probe failed — restarting agent once"
   start_agent
   if NEW="$(wait_added)"; then
     CONNECT="$NEW"
   fi
   sleep 3
-  if ! probe_ok "$CONNECT"; then
-    log "public info.json STILL FAILED for $CONNECT"
-    curl -sv --max-time 15 "http://${CONNECT}/info.json" 2>&1 | tail -n 40 || true
-    cat localtonet-agent.log
-    log "In Localtonet My Tunnels: click Start on the UDP_TCP tunnel for this AuthToken, then re-run deploy."
-    exit 1
+  if probe_ok "$CONNECT"; then
+    PUBLIC_OK=1
   fi
 fi
 
-log "public info.json OK"
-head -c 200 /tmp/lt-info.json; echo
-
 printf '%s\n' "$CONNECT" > connect.txt
+{
+  echo "connect_address=$CONNECT"
+  echo "connect_host=${CONNECT%%:*}"
+  echo "tunnel_backend=localtonet"
+} >> "$GITHUB_OUTPUT"
+
 tail -n 80 localtonet-agent.log || true
 log "CONNECT=$CONNECT"
 echo "========== CONNECT NOW =========="
 echo "FiveM F8: connect $CONNECT"
 echo "================================="
 
-{
-  echo "connect_address=$CONNECT"
-  echo "connect_host=${CONNECT%%:*}"
-  echo "tunnel_backend=localtonet"
-} >> "$GITHUB_OUTPUT"
+if [ "$PUBLIC_OK" -ne 1 ]; then
+  log "WARNING: public info.json not reachable yet for $CONNECT"
+  curl -sv --max-time 15 "http://${CONNECT}/info.json" 2>&1 | tail -n 40 || true
+  cat localtonet-agent.log || true
+  log "Open Localtonet → My Tunnels → Start the UDP_TCP tunnel for this AuthToken."
+  log "FXServer is up locally; keepalive will keep retrying the public path."
+  # Soft-fail: do not abort deploy — user can Start tunnel while job is alive.
+  exit 0
+fi
+
+log "public info.json OK"
+head -c 200 /tmp/lt-info.json; echo
