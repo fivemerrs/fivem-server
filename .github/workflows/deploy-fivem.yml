@@ -9,12 +9,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download FXServer
+      - name: Download FXServer + base resources
         run: |
           curl -L -o resources.zip "https://github.com/fivemerrs/fivem-server/releases/download/v2/resources.zip"
           curl -L -o fx.tar.xz "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/25770-8ddccd4e4dfd6a760ce18651656463f961cc4761/fx.tar.xz"
-          mkdir -p fxserver server-data/resources
+          mkdir -p fxserver server-data
           tar -xf fx.tar.xz -C fxserver
+          # official base resources (mapmanager, spawnmanager, etc.)
+          git clone --depth 1 https://github.com/citizenfx/cfx-server-data.git /tmp/cfx-server-data
+          cp -a /tmp/cfx-server-data/resources server-data/resources
           unzip -qo resources.zip -d server-data/resources/
 
       - name: Write server config
@@ -22,37 +25,53 @@ jobs:
           CONNECT_ADDR: ${{ secrets.LOCALTONET_CONNECT }}
         run: |
           CONNECT_HOST="${CONNECT_ADDR%%:*}"
-          cat > server-data/server.cfg << CFG
+          cat > server-data/server.cfg << 'CFG'
           endpoint_add_tcp "0.0.0.0:30120"
           endpoint_add_udp "0.0.0.0:30120"
           sv_maxclients 8
           sv_hostname "FiveM Test Server"
-          sv_licenseKey "${{ secrets.SV_LICENSE_KEY }}"
+          sets sv_projectName "FiveM Test"
+          sets sv_projectDesc "Localtonet test"
           sv_master1 ""
-          sv_listingHostOverride "${CONNECT_HOST}"
-          sv_listingIPOverride "${CONNECT_ADDR}"
           ensure mapmanager
+          ensure chat
           ensure spawnmanager
           ensure sessionmanager
           ensure basic-gamemode
           ensure hardcap
           CFG
+          # strip accidental leading spaces from heredoc if any
+          sed -i 's/^[[:space:]]*//' server-data/server.cfg
+          # inject secrets/overrides without indent issues
+          {
+            echo "sv_licenseKey \"${{ secrets.SV_LICENSE_KEY }}\""
+            echo "sv_listingHostOverride \"${CONNECT_HOST}\""
+            echo "sv_listingIPOverride \"${CONNECT_ADDR}\""
+          } >> server-data/server.cfg
+          echo "=== server.cfg ==="
+          cat server-data/server.cfg
 
-      - name: Start FXServer
+      - name: Start FXServer (screen)
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq screen
           cd fxserver
-          nohup bash run.sh +exec ../server-data/server.cfg > ../fivem.log 2>&1 &
-          for i in $(seq 1 120); do
+          screen -dmS fivem bash -lc 'bash run.sh +exec ../server-data/server.cfg 2>&1 | tee ../fivem.log'
+          for i in $(seq 1 90); do
             sleep 3
             if curl -sf http://127.0.0.1:30120/info.json >/dev/null 2>&1; then
               echo "FXServer ready"
-              curl -s http://127.0.0.1:30120/info.json | head -c 400 || true
+              curl -s http://127.0.0.1:30120/info.json | head -c 400
               echo
               exit 0
             fi
+            if (( i % 10 == 0 )); then
+              echo "wait $i"
+              tail -n 15 ../fivem.log || true
+            fi
           done
           echo "FXServer NOT ready"
-          tail -n 60 ../fivem.log || true
+          tail -n 80 ../fivem.log || true
           exit 1
 
       - name: Localtonet TCP+UDP tunnel
@@ -76,21 +95,18 @@ jobs:
           echo "=== public http://$CONNECT_ADDR/info.json ==="
           curl -sv --max-time 15 "http://${CONNECT_ADDR}/info.json" 2>&1 | tail -n 50 || true
           echo "=== agent log ==="
-          pgrep -a localtonet || true
           cat localtonet-agent.log || true
 
       - name: Print connect info
         run: |
           echo "############################################"
           echo "#  connect ${{ steps.tunnel.outputs.connect_address }}"
-          echo "#  backend: localtonet TCP+UDP mixed"
           echo "############################################"
           echo "${{ steps.tunnel.outputs.connect_address }}" > connect.txt
           echo "## Connect" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "connect ${{ steps.tunnel.outputs.connect_address }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "Refresh My Tunnels — use the Server Port shown after agent connects." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload connect address
         uses: actions/upload-artifact@v4
